@@ -30,4 +30,6 @@ hf_cache/
 .DS_Store
 
 # --- Documentation ---
-*.md
+*.pdf
+docs/
+.claude/
