@@ -249,3 +249,34 @@ def test_language_audit_counts_starting_places_separately():
                                            "move the spoon to the left side of the table"]})
     out = R.language_audit(bridge)
     assert out["source_location"] == 1 and out["destination_or_direction"] == 1
+
+
+def test_load_run_folded_readout_swaps_columns(tmp_path):
+    """GPU runs read the folded readout by default and keep the 255-token slice."""
+    import pandas as pd
+    import reanalysis as R
+
+    row = {"scene_id": "s1", "condition": "baseline", "role": "a", "image_scene_id": "s1"}
+    row.update({f"c{i}": 0.1 * i for i in range(7)})
+    row.update({f"cf{i}": 0.1 * i + 1.0 for i in range(7)})
+    pd.DataFrame([row]).to_csv(tmp_path / "run.csv", index=False)
+
+    folded = R.load_run(str(tmp_path / "run.csv"))
+    assert all(abs(folded[f"c{i}"].iloc[0] - (0.1 * i + 1.0)) < 1e-12 for i in range(7))
+    assert all(abs(folded[f"c{i}_255"].iloc[0] - 0.1 * i) < 1e-12 for i in range(7))
+
+    sliced = R.load_run(str(tmp_path / "run.csv"), readout="255")
+    assert all(abs(sliced[f"c{i}"].iloc[0] - 0.1 * i) < 1e-12 for i in range(7))
+    assert "c0_255" not in sliced
+
+
+def test_load_run_leaves_logs_without_folded_columns(tmp_path):
+    """The original 4-bit log has no cf* columns and is returned unchanged."""
+    import pandas as pd
+    import reanalysis as R
+
+    row = {"scene_id": "s1", "condition": "baseline", "role": "a"}
+    row.update({f"c{i}": 0.1 * i for i in range(7)})
+    pd.DataFrame([row]).to_csv(tmp_path / "log.csv", index=False)
+    log = R.load_run(str(tmp_path / "log.csv"))
+    assert "c0_255" not in log and abs(log["c3"].iloc[0] - 0.3) < 1e-12

@@ -754,10 +754,20 @@ def distribution_diagnostics(log: pd.DataFrame, geo: pd.DataFrame) -> dict:
 REPLAY_KEY = ["scene_id", "condition", "role", "image_scene_id"]
 
 
-def load_run(path: str) -> pd.DataFrame:
-    """A run's log, concatenating `<stem>.shard<i>.csv` files when the run was sharded."""
+def load_run(path: str, readout: str = "folded") -> pd.DataFrame:
+    """A run's log, concatenating `<stem>.shard<i>.csv` files when the run was sharded.
+
+    GPU runs log two expected-value readouts: `c*`, the original slice over
+    tokens 31745-31999, and `cf*`, all 256 action tokens with 31744 folded into
+    bin 254 as OpenVLA's decoder does. With `readout="folded"` (the papers'
+    convention) the folded values replace `c*`, so every analysis reads them,
+    and the slice values are kept as `c*_255`. `readout="255"` keeps the slice.
+    Logs without `cf*`, such as the original 4-bit log, are returned unchanged.
+    """
     import glob
 
+    if readout not in ("folded", "255"):
+        raise ValueError(f"readout must be 'folded' or '255', got {readout!r}")
     stem, ext = os.path.splitext(path)
     files = sorted(glob.glob(f"{stem}.shard*{ext}")) or ([path] if os.path.exists(path) else [])
     if not files:
@@ -766,6 +776,10 @@ def load_run(path: str) -> pd.DataFrame:
     frame["scene_id"] = frame["scene_id"].astype(str)
     if "image_scene_id" in frame:
         frame["image_scene_id"] = frame["image_scene_id"].astype(str)
+    if readout == "folded" and all(f"cf{i}" in frame for i in range(7)):
+        for i in range(7):
+            frame[f"c{i}_255"] = frame[f"c{i}"]
+            frame[f"c{i}"] = frame[f"cf{i}"]
     return frame
 
 
@@ -775,8 +789,13 @@ def compare_replay(original: pd.DataFrame, replay: pd.DataFrame) -> dict:
     Argmax agreement is exact equality of the executable action per dimension;
     the continuous readout is compared in lateral bins. A replay on different
     hardware or precision that agrees on the argmax but drifts slightly in the
-    expected value is still reproducing the executable behaviour.
+    expected value is still reproducing the executable behaviour. The original
+    log carries only the 255-token slice, so a replay loaded with the folded
+    readout is compared through its `c*_255` columns.
     """
+    if all(f"c{i}_255" in replay for i in range(7)):
+        replay = (replay.drop(columns=[f"c{i}" for i in range(7)])
+                  .rename(columns={f"c{i}_255": f"c{i}" for i in range(7)}))
     cols = REPLAY_KEY + [f"a{i}" for i in range(7)] + [f"c{i}" for i in range(7)]
     merged = original[cols].merge(replay[cols], on=REPLAY_KEY, suffixes=("_orig", "_new"))
     out = {"n_matched": int(len(merged)), "n_replay": int(len(replay))}
@@ -807,7 +826,8 @@ def readout_fix_effect(run: pd.DataFrame) -> dict:
     for i in range(7):
         if f"cf{i}" not in run or f"m{i}" not in run:
             continue
-        diff = (run[f"cf{i}"] - run[f"c{i}"]).abs()
+        sliced = run[f"c{i}_255"] if f"c{i}_255" in run else run[f"c{i}"]
+        diff = (run[f"cf{i}"] - sliced).abs()
         out[f"dim{i}"] = {"max_abs_change": float(diff.max()), "share_changed_1e-6": float((diff > 1e-6).mean()),
                           "min_mass": float(run[f"m{i}"].min()), "median_mass": float(run[f"m{i}"].median())}
     return out

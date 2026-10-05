@@ -27,9 +27,14 @@ WORDINGS = ("baseline", "prenominal", "object", "table_side", "absent_noun", "mo
 RUNS = {"nf4": ("replay_nf4", "ladder", "natural"), "bf16": ("replay_bf16", "ladder_bf16", "natural_bf16")}
 
 
+# Expected-value readout for every statistic: "folded" (all 256 action tokens,
+# 31744 folded into bin 254, as OpenVLA decodes) or "255" (the original slice).
+READOUT = "folded"
+
+
 def _load(runs_dir: str, tag: str):
     try:
-        return R.load_run(os.path.join(runs_dir, f"{tag}.csv"))
+        return R.load_run(os.path.join(runs_dir, f"{tag}.csv"), readout=READOUT)
     except FileNotFoundError:
         return None
 
@@ -85,13 +90,22 @@ def main():
     ap.add_argument("--runs", default="outputs/runs")
     ap.add_argument("--data", default="google_drive/v2")
     ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--readout", choices=("folded", "255"), default="folded",
+                    help="expected-value readout for all statistics (default: folded, the papers' convention)")
     args = ap.parse_args()
+    global READOUT
+    READOUT = args.readout
 
     original = R.load_probe(args.data)
     constructed = R.load_constructed(args.data)
     geo = R.scene_geometry(original, constructed)
     bridge = R.load_bridge_manifest(args.data)
-    res, L = {}, ["# GPU runs\n"]
+    res, L = {"readout": READOUT}, ["# GPU runs\n",
+                                    f"Readout: expected value, {READOUT} "
+                                    + ("(all 256 action tokens; token 31744 folded into bin 254). "
+                                       if READOUT == "folded" else "(tokens 31745-31999 only). ")
+                                    + "Replay-vs-log agreement uses the 255-token slice, the only readout the "
+                                    "original log carries.\n"]
 
     for tag in ("replay_nf4", "replay_bf16"):
         run = _load(args.runs, tag)

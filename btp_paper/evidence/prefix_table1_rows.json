@@ -1,0 +1,32 @@
+{
+ "a100_own_prefix": {
+  "opp_n": 113,
+  "opp_both_correct": 0.07079646017699115,
+  "right_share": [
+   0.417,
+   0.708,
+   0.994
+  ],
+  "contrast_pts": 10.5,
+  "contrast_p": 0.0078125,
+  "splits": "8/20",
+  "splits_p": 0.5034446716308594,
+  "signed_median": -0.062,
+  "signed_p": 0.07011992463434015
+ },
+ "a100_dx_fixed_neutral": {
+  "opp_n": 118,
+  "opp_both_correct": 0.0423728813559322,
+  "right_share": [
+   0.424,
+   0.737,
+   0.982
+  ],
+  "contrast_pts": 4.7,
+  "contrast_p": 0.2890625,
+  "splits": "5/12",
+  "splits_p": 0.7744140625,
+  "signed_median": -0.017,
+  "signed_p": 0.01027412756090126
+ }
+}
